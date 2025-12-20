@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Madagascar Fady Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+
+  <style>
+    body { margin:0; padding:0; }
+    #map { height: 100vh; }
+    #searchBox {
+      position: absolute;
+      top: 10px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: white;
+      padding: 5px 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+
+<div id="searchBox">
+  <input type="text" id="searchInput" placeholder="Search location in Madagascar">
+  <button id="searchBtn">Go</button>
+</div>
+
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+  // ======= 1️⃣ Firebase Config & Initialization =======
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // ======= 2️⃣ Initialize Leaflet Map (Madagascar-only) =======
+  const madagascarBounds = [
+    [-25.6, 43.2], // SW
+    [-11.5, 50.5]  // NE
+  ];
+
+  const map = L.map('map', {
+    maxBounds: madagascarBounds,
+    maxBoundsViscosity: 1.0,
+    minZoom: 5,
+    maxZoom: 12
+  }).setView([-18.7669, 46.8691], 6);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+
+  // ======= 2️⃣a Add Drawing Controls =======
+  const drawnItems = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+
+  const drawControl = new L.Control.Draw({
+    draw: {
+      polygon: true,
+      rectangle: true,
+      marker: true,
+      circle: false,
+      circlemarker: false,
+      polyline: false
+    },
+    edit: {
+      featureGroup: drawnItems
+    }
+  });
+  map.addControl(drawControl);
+
+  // ======= 3️⃣ Handle New Shapes =======
+  map.on(L.Draw.Event.CREATED, async function (event) {
+    const layer = event.layer;
+    const fadyDescription = prompt("Enter the Fady for this area:");
+    if (!fadyDescription) return;
+
+    layer.bindPopup(`<strong>Fady:</strong> ${fadyDescription}`);
+    drawnItems.addLayer(layer);
+
+    // Convert to Firestore-safe format
+    const geojson = layer.toGeoJSON();
+    geojson.fady = fadyDescription;   // flatten properties
+
+    try {
+      await db.collection("fady").add(geojson);
+      console.log("Fady saved to Firestore!");
+    } catch (error) {
+      console.error("Error saving fady:", error);
+    }
+
+    // Allow clicking to remove
+    layer.on('click', async function() {
+      if (confirm("Remove this Fady?")) {
+        drawnItems.removeLayer(layer);
+        if (geojson.id) {
+          await db.collection("fady").doc(geojson.id).delete();
+        }
+      }
+    });
+  });
+
+  // ======= 4️⃣ Load Existing Fady from Firestore =======
+  async function loadFady() {
+    const snapshot = await db.collection("fady").get();
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const layer = L.geoJSON({
+        type: data.type,
+        geometry: data.geometry
+      }).bindPopup(`<strong>Fady:</strong> ${data.fady}`);
+
+      layer.eachLayer(l => {
+        l.on('click', function() {
+          if (confirm("Remove this Fady?")) {
+            drawnItems.removeLayer(l);
+            db.collection("fady").doc(doc.id).delete();
+          }
+        });
+      });
+
+      drawnItems.addLayer(layer);
+    });
+  }
+  loadFady();
+
+  // ======= 5️⃣ Search Box Functionality =======
+  document.getElementById('searchBtn').addEventListener('click', async function() {
+    const query = document.getElementById('searchInput').value + " Madagascar";
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url);
+    const results = await response.json();
+    if (results.length > 0) {
+      const lat = parseFloat(results[0].lat);
+      const lon = parseFloat(results[0].lon);
+      map.setView([lat, lon], 10);
+    } else {
+      alert("Location not found.");
+    }
+  });
+
+</script>
+
+</body>
+</html>
