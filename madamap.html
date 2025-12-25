@@ -10,18 +10,28 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
 
   <style>
-    body { margin:0; padding:0; }
-    #map { height: 100vh; }
-    #searchBox {
-      position: absolute;
-      top: 10px; left: 50%;
-      transform: translateX(-50%);
-      z-index: 1000;
-      background: white;
-      padding: 5px 10px;
-      border-radius: 5px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.3);
-    }
+    html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+  }
+#map {
+    width: 100%;
+    height: 600px; /* FIXED height for iframe */
+  }
+
+  #searchBox {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+  }
   </style>
 </head>
 <body>
@@ -37,12 +47,12 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 
-<!-- Firebase SDK (compat for simple migration) -->
+<!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
 <script>
-  // ======= Firebase Config & Initialization =======
+  // ======= 1️⃣ Firebase Config & Initialization =======
   const firebaseConfig = {
     apiKey: "YOUR_API_KEY",
     authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -55,7 +65,7 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
-  // ======= Initialize Leaflet Map (Madagascar-only) =======
+  // ======= 2️⃣ Initialize Leaflet Map (Madagascar-only) =======
   const madagascarBounds = [
     [-25.6, 43.2], // SW
     [-11.5, 50.5]  // NE
@@ -72,7 +82,7 @@
     attribution: '&copy; OpenStreetMap contributors',
   }).addTo(map);
 
-  // ======= Drawing Controls =======
+  // ======= 2️⃣a Add Drawing Controls =======
   const drawnItems = new L.FeatureGroup();
   map.addLayer(drawnItems);
 
@@ -91,20 +101,7 @@
   });
   map.addControl(drawControl);
 
-  // ======= Helper: bind click/delete to a single layer =======
-  function attachLayerHandlers(layer) {
-    layer.on('click', async function() {
-      if (confirm("Remove this Fady?")) {
-        drawnItems.removeLayer(layer);
-        if (layer._docId) {
-          try { await db.collection("fady").doc(layer._docId).delete(); }
-          catch (e) { console.error("Delete failed", e); }
-        }
-      }
-    });
-  }
-
-  // ======= Handle New Shapes (create) =======
+  // ======= 3️⃣ Handle New Shapes =======
   map.on(L.Draw.Event.CREATED, async function (event) {
     const layer = event.layer;
     const fadyDescription = prompt("Enter the Fady for this area:");
@@ -113,96 +110,64 @@
     layer.bindPopup(`<strong>Fady:</strong> ${fadyDescription}`);
     drawnItems.addLayer(layer);
 
-    // Convert to GeoJSON Feature and ensure properties
-    const feature = layer.toGeoJSON();
-    feature.properties = feature.properties || {};
-    feature.properties.fady = fadyDescription;
+    // Convert to Firestore-safe format
+    const geojson = layer.toGeoJSON();
+    geojson.fady = fadyDescription;   // flatten properties
 
     try {
-      const docRef = await db.collection("fady").add(feature);
-      layer._docId = docRef.id; // attach Firestore id to the layer
-      console.log("Fady saved to Firestore with id", docRef.id);
+      await db.collection("fady").add(geojson);
+      console.log("Fady saved to Firestore!");
     } catch (error) {
       console.error("Error saving fady:", error);
     }
 
-    attachLayerHandlers(layer);
-  });
-
-  // ======= Handle Edit (update) =======
-  map.on(L.Draw.Event.EDITED, async function(e) {
-    const layers = e.layers;
-    layers.eachLayer(async function(l) {
-      if (!l._docId) return;
-      const feat = l.toGeoJSON();
-      feat.properties = feat.properties || {};
-      // Preserve existing fady if present
-      // (if text edit allowed, you'd update properties.fady separately)
-      try {
-        await db.collection("fady").doc(l._docId).set(feat);
-        console.log("Updated fady", l._docId);
-      } catch (err) {
-        console.error("Failed to update fady:", err);
-      }
-    });
-  });
-
-  // ======= Handle Delete from edit toolbar (bulk delete) =======
-  map.on(L.Draw.Event.DELETED, async function(e) {
-    const layers = e.layers;
-    layers.eachLayer(async function(l) {
-      if (l._docId) {
-        try {
-          await db.collection("fady").doc(l._docId).delete();
-          console.log("Deleted fady", l._docId);
-        } catch (err) {
-          console.error("Failed to delete fady:", err);
+    // Allow clicking to remove
+    layer.on('click', async function() {
+      if (confirm("Remove this Fady?")) {
+        drawnItems.removeLayer(layer);
+        if (geojson.id) {
+          await db.collection("fady").doc(geojson.id).delete();
         }
       }
     });
   });
 
-  // ======= Load Existing Fady from Firestore =======
+  // ======= 4️⃣ Load Existing Fady from Firestore =======
   async function loadFady() {
-    try {
-      const snapshot = await db.collection("fady").get();
-      snapshot.forEach(doc => {
-        const feature = doc.data(); // stored GeoJSON Feature
-        // Add to map preserving properties and doc id
-        const layerGroup = L.geoJSON(feature, {
-          onEachFeature: function (feature, l) {
-            l.bindPopup(`<strong>Fady:</strong> ${feature.properties?.fady || ''}`);
-            l._docId = doc.id;
-            attachLayerHandlers(l);
+    const snapshot = await db.collection("fady").get();
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const layer = L.geoJSON({
+        type: data.type,
+        geometry: data.geometry
+      }).bindPopup(`<strong>Fady:</strong> ${data.fady}`);
+
+      layer.eachLayer(l => {
+        l.on('click', function() {
+          if (confirm("Remove this Fady?")) {
+            drawnItems.removeLayer(l);
+            db.collection("fady").doc(doc.id).delete();
           }
         });
-        drawnItems.addLayer(layerGroup);
       });
-    } catch (err) {
-      console.error("Error loading fady:", err);
-    }
+
+      drawnItems.addLayer(layer);
+    });
   }
   loadFady();
 
-  // ======= Search Box Functionality (Nominatim) =======
+  // ======= 5️⃣ Search Box Functionality =======
   document.getElementById('searchBtn').addEventListener('click', async function() {
-    const q = document.getElementById('searchInput').value.trim();
-    if (!q) return;
-    const query = q + " Madagascar";
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
-    try {
-      const response = await fetch(url);
-      const results = await response.json();
-      if (results.length > 0) {
-        const lat = parseFloat(results[0].lat);
-        const lon = parseFloat(results[0].lon);
-        map.setView([lat, lon], 10);
-      } else {
-        alert("Location not found.");
-      }
-    } catch (err) {
-      console.error("Search failed", err);
-      alert("Search failed.");
+    const query = document.getElementById('searchInput').value + " Madagascar";
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url);
+    const results = await response.json();
+    if (results.length > 0) {
+      const lat = parseFloat(results[0].lat);
+      const lon = parseFloat(results[0].lon);
+      map.setView([lat, lon], 10);
+    } else {
+      alert("Location not found.");
     }
   });
 
