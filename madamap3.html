@@ -84,24 +84,14 @@
     layer.bindPopup(`<strong>Fady:</strong> ${description}`);
     drawnItems.addLayer(layer);
 
-    const geojson = layer.toGeoJSON();
-
-    // Flatten coordinates using spread operator for Firestore
-    function flattenCoords(coords) {
-      return coords.map(c => Array.isArray(c[0]) ? flattenCoords(c) : [...c]);
-    }
-
-    const flattenedGeoJSON = {
-      type: geojson.type,
-      geometry: {
-        type: geojson.geometry.type,
-        coordinates: flattenCoords(geojson.geometry.coordinates)
-      },
-      properties: { fady: description }
-    };
+    // Convert GeoJSON to string to avoid nested array issues
+    const geojson = JSON.stringify(layer.toGeoJSON());
 
     try {
-      const docRef = await db.collection("fady").add(flattenedGeoJSON);
+      const docRef = await db.collection("fady").add({
+        geojson: geojson,
+        fady: description
+      });
       console.log("Fady saved with ID:", docRef.id);
 
       layer.on('click', async function(){
@@ -120,7 +110,9 @@
     const snapshot = await db.collection("fady").get();
     snapshot.forEach(doc=>{
       const data = doc.data();
-      const layer = L.geoJSON(data).bindPopup(`<strong>Fady:</strong> ${data.properties.fady}`);
+      const geojson = JSON.parse(data.geojson);
+      const layer = L.geoJSON(geojson).bindPopup(`<strong>Fady:</strong> ${data.fady}`);
+
       layer.eachLayer(l=>{
         l.on('click', async function(){
           if(confirm("Remove this Fady?")){
@@ -129,6 +121,7 @@
           }
         });
       });
+
       drawnItems.addLayer(layer);
     });
   }
