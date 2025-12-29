@@ -10,13 +10,26 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
 
   <style>
-    html, body {
-      margin: 0; padding: 0; width: 100%; height: 100%;
+    html, body { margin:0; padding:0; width:100%; height:100%; }
+    #map { width:100%; height:600px; }
+    #searchBox {
+      position:absolute;
+      top:10px; left:50%;
+      transform:translateX(-50%);
+      z-index:1000;
+      background:white;
+      padding:5px 10px;
+      border-radius:5px;
+      box-shadow:0 0 5px rgba(0,0,0,0.3);
     }
-    #map { width: 100%; height: 600px; }
   </style>
 </head>
 <body>
+
+<div id="searchBox">
+  <input type="text" id="searchInput" placeholder="Search location in Madagascar">
+  <button id="searchBtn">Go</button>
+</div>
 
 <div id="map"></div>
 
@@ -29,7 +42,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
 <script>
-  // 1️⃣ Initialize Firebase
+  // ===== 1️⃣ Initialize Firebase =====
   const firebaseConfig = {
     apiKey: "AIzaSyAzazHrR1MZycLSVFaf3SJWbioZRaqhm7U",
     authDomain: "mada-map-cc473.firebaseapp.com",
@@ -41,12 +54,7 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
-  // Test Firestore connection
-  db.collection("fadyTest").add({ test: "hello", timestamp: Date.now() })
-    .then(docRef => console.log("Test document saved with ID:", docRef.id))
-    .catch(error => console.error("Error saving test doc:", error));
-
-  // 2️⃣ Initialize Leaflet Map (Madagascar)
+  // ===== 2️⃣ Initialize Map =====
   const madagascarBounds = [[-25.6, 43.2], [-11.5, 50.5]];
   const map = L.map('map', {
     maxBounds: madagascarBounds,
@@ -59,72 +67,80 @@
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  // 3️⃣ Add Drawing Controls
   const drawnItems = new L.FeatureGroup();
   map.addLayer(drawnItems);
 
   const drawControl = new L.Control.Draw({
-    draw: { polygon: true, rectangle: true, marker: true, circle: false, polyline: false },
+    draw: { polygon:true, rectangle:true, marker:true, circle:false, polyline:false },
     edit: { featureGroup: drawnItems }
   });
   map.addControl(drawControl);
 
-  // 4️⃣ Handle new shapes
-  map.on(L.Draw.Event.CREATED, async function(event) {
+  // ===== 3️⃣ Handle new shapes =====
+  map.on(L.Draw.Event.CREATED, async function(event){
     const layer = event.layer;
     const description = prompt("Enter Fady description:");
-    if (!description) return;
+    if(!description) return;
 
     layer.bindPopup(`<strong>Fady:</strong> ${description}`);
     drawnItems.addLayer(layer);
 
-    const geojson = layer.toGeoJSON();
-    const data = {
-      type: geojson.type,
-      geometry: geojson.geometry,
-      properties: { fady: description }
-    };
+    // Convert GeoJSON to string to avoid nested array issues
+    const geojsonStr = JSON.stringify(layer.toGeoJSON());
 
     try {
-      const docRef = await db.collection("fady").add(data);
+      const docRef = await db.collection("fady").add({
+        geojson: geojsonStr,
+        fady: description
+      });
       console.log("Fady saved with ID:", docRef.id);
 
-      layer.on('click', async function() {
-        if (confirm("Remove this Fady?")) {
+      layer.on('click', async function(){
+        if(confirm("Remove this Fady?")){
           drawnItems.removeLayer(layer);
           await db.collection("fady").doc(docRef.id).delete();
         }
       });
-    } catch (err) {
+    } catch(err){
       console.error("Error saving Fady:", err);
     }
   });
 
-  // 5️⃣ Load existing Fady
-  async function loadFady() {
+  // ===== 4️⃣ Load existing Fady =====
+  async function loadFady(){
     const snapshot = await db.collection("fady").get();
-    snapshot.forEach(doc => {
+    snapshot.forEach(doc=>{
       const data = doc.data();
-      const layer = L.geoJSON({
-        type: data.type,
-        geometry: data.geometry
-      }).bindPopup(`<strong>Fady:</strong> ${data.properties.fady}`);
-
-      layer.eachLayer(l => {
-        l.on('click', async function() {
-          if (confirm("Remove this Fady?")) {
+      const geojson = JSON.parse(data.geojson);
+      const layer = L.geoJSON(geojson).bindPopup(`<strong>Fady:</strong> ${data.fady}`);
+      layer.eachLayer(l=>{
+        l.on('click', async function(){
+          if(confirm("Remove this Fady?")){
             drawnItems.removeLayer(l);
             await db.collection("fady").doc(doc.id).delete();
           }
         });
       });
-
       drawnItems.addLayer(layer);
     });
   }
   loadFady();
+
+  // ===== 5️⃣ Search box =====
+  document.getElementById('searchBtn').addEventListener('click', async function(){
+    const query = document.getElementById('searchInput').value + " Madagascar";
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url);
+    const results = await response.json();
+    if(results.length>0){
+      map.setView([parseFloat(results[0].lat), parseFloat(results[0].lon)], 10);
+    } else {
+      alert("Location not found.");
+    }
+  });
 </script>
 
 </body>
 </html>
+
 
