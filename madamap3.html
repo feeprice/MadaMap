@@ -85,14 +85,15 @@
     layer.bindPopup(`<strong>Fady:</strong> ${description}`);
     drawnItems.addLayer(layer);
 
-    // Convert GeoJSON to string to avoid nested array issues
-    const geojsonStr = JSON.stringify(layer.toGeoJSON());
+    // Convert GeoJSON to string for Firestore (flatten Point coordinates)
+    let geojson = layer.toGeoJSON();
+    if(geojson.geometry.type === "Point"){
+      geojson.geometry.coordinates = { lng: geojson.geometry.coordinates[0], lat: geojson.geometry.coordinates[1] };
+    }
+    const geojsonStr = JSON.stringify(geojson);
 
     try {
-      const docRef = await db.collection("fady").add({
-        geojson: geojsonStr,
-        fady: description
-      });
+      const docRef = await db.collection("fady").add({ geojson: geojsonStr, fady: description });
       console.log("Fady saved with ID:", docRef.id);
 
       layer.on('click', async function(){
@@ -111,7 +112,13 @@
     const snapshot = await db.collection("fady").get();
     snapshot.forEach(doc=>{
       const data = doc.data();
-      const geojson = JSON.parse(data.geojson);
+      let geojson = JSON.parse(data.geojson);
+
+      // Restore Point coordinates
+      if(geojson.geometry.type === "Point"){
+        geojson.geometry.coordinates = [geojson.geometry.coordinates.lng, geojson.geometry.coordinates.lat];
+      }
+
       const layer = L.geoJSON(geojson).bindPopup(`<strong>Fady:</strong> ${data.fady}`);
       layer.eachLayer(l=>{
         l.on('click', async function(){
@@ -142,5 +149,6 @@
 
 </body>
 </html>
+
 
 
