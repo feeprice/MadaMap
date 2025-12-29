@@ -104,34 +104,33 @@
 
   // ======= 3️⃣ Handle New Shapes =======
   map.on(L.Draw.Event.CREATED, async function (event) {
-    const layer = event.layer;
-    const fadyDescription = prompt("Enter the Fady for this area:");
-    if (!fadyDescription) return;
+  const layer = event.layer;
+  const fadyDescription = prompt("Enter the Fady for this area:");
+  if (!fadyDescription) return;
 
-    layer.bindPopup(`<strong>Fady:</strong> ${fadyDescription}`);
-    drawnItems.addLayer(layer);
+  layer.bindPopup(`<strong>Fady:</strong> ${fadyDescription}`);
+  drawnItems.addLayer(layer);
 
-    // Convert to Firestore-safe format
-    const geojson = layer.toGeoJSON();
-    geojson.fady = fadyDescription;   // flatten properties
+  const geojson = layer.toGeoJSON();
+  geojson.properties = { fady: fadyDescription };
 
-    try {
-      await db.collection("fady").add(geojson);
-      console.log("Fady saved to Firestore!");
-    } catch (error) {
-      console.error("Error saving fady:", error);
-    }
+  try {
+    const docRef = await db.collection("fady").add(geojson);
+    geojson.id = docRef.id;
+    console.log("Fady saved:", docRef.id);
+  } catch (error) {
+    console.error("Error saving fady:", error);
+  }
 
-    // Allow clicking to remove
-    layer.on('click', async function() {
-      if (confirm("Remove this Fady?")) {
-        drawnItems.removeLayer(layer);
-        if (geojson.id) {
-          await db.collection("fady").doc(geojson.id).delete();
-        }
+  layer.on('click', async function () {
+    if (confirm("Remove this Fady?")) {
+      drawnItems.removeLayer(layer);
+      if (geojson.id) {
+        await db.collection("fady").doc(geojson.id).delete();
       }
-    });
+    }
   });
+});
 
   // ======= 4️⃣ Load Existing Fady from Firestore =======
   async function loadFady() {
@@ -141,7 +140,7 @@
       const layer = L.geoJSON({
         type: data.type,
         geometry: data.geometry
-      }).bindPopup(`<strong>Fady:</strong> ${data.fady}`);
+      }).bindPopup(`<strong>Fady:</strong> ${data.properties.fady}`);
 
       layer.eachLayer(l => {
         l.on('click', function() {
