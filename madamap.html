@@ -66,9 +66,10 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    // ===== Test Firebase connection =====
     db.collection("fadyTest").add({ test: "hello" })
-  .then(docRef => console.log("Test document saved with ID:", docRef.id))
-  .catch(error => console.error("Error saving test doc:", error));
+      .then(docRef => console.log("Test doc saved with ID:", docRef.id))
+      .catch(error => console.error("Error saving test doc:", error));
 
     // ===== 2️⃣ Initialize Leaflet Map (Madagascar-only) =====
     const madagascarBounds = [
@@ -115,7 +116,6 @@
       layer.bindPopup(`<strong>Fady:</strong> ${fadyDescription}`);
       drawnItems.addLayer(layer);
 
-      // Only plain JSON data for Firestore
       const geojson = layer.toGeoJSON();
       const geojsonData = {
         type: geojson.type,
