@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Madagascar Fady Map - Minimal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+    }
+    #map { width: 100%; height: 600px; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+  // 1️⃣ Initialize Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyAzazHrR1MZycLSVFaf3SJWbioZRaqhm7U",
+    authDomain: "mada-map-cc473.firebaseapp.com",
+    projectId: "mada-map-cc473",
+    storageBucket: "mada-map-cc473.firebasestorage.app",
+    messagingSenderId: "575563718533",
+    appId: "1:575563718533:web:3df319306689f753102eec"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // Test Firestore connection
+  db.collection("fadyTest").add({ test: "hello", timestamp: Date.now() })
+    .then(docRef => console.log("Test document saved with ID:", docRef.id))
+    .catch(error => console.error("Error saving test doc:", error));
+
+  // 2️⃣ Initialize Leaflet Map (Madagascar)
+  const madagascarBounds = [[-25.6, 43.2], [-11.5, 50.5]];
+  const map = L.map('map', {
+    maxBounds: madagascarBounds,
+    maxBoundsViscosity: 1.0,
+    minZoom: 5,
+    maxZoom: 12
+  }).setView([-18.7669, 46.8691], 6);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  // 3️⃣ Add Drawing Controls
+  const drawnItems = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+
+  const drawControl = new L.Control.Draw({
+    draw: { polygon: true, rectangle: true, marker: true, circle: false, polyline: false },
+    edit: { featureGroup: drawnItems }
+  });
+  map.addControl(drawControl);
+
+  // 4️⃣ Handle new shapes
+  map.on(L.Draw.Event.CREATED, async function(event) {
+    const layer = event.layer;
+    const description = prompt("Enter Fady description:");
+    if (!description) return;
+
+    layer.bindPopup(`<strong>Fady:</strong> ${description}`);
+    drawnItems.addLayer(layer);
+
+    const geojson = layer.toGeoJSON();
+    const data = {
+      type: geojson.type,
+      geometry: geojson.geometry,
+      properties: { fady: description }
+    };
+
+    try {
+      const docRef = await db.collection("fady").add(data);
+      console.log("Fady saved with ID:", docRef.id);
+
+      layer.on('click', async function() {
+        if (confirm("Remove this Fady?")) {
+          drawnItems.removeLayer(layer);
+          await db.collection("fady").doc(docRef.id).delete();
+        }
+      });
+    } catch (err) {
+      console.error("Error saving Fady:", err);
+    }
+  });
+
+  // 5️⃣ Load existing Fady
+  async function loadFady() {
+    const snapshot = await db.collection("fady").get();
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const layer = L.geoJSON({
+        type: data.type,
+        geometry: data.geometry
+      }).bindPopup(`<strong>Fady:</strong> ${data.properties.fady}`);
+
+      layer.eachLayer(l => {
+        l.on('click', async function() {
+          if (confirm("Remove this Fady?")) {
+            drawnItems.removeLayer(l);
+            await db.collection("fady").doc(doc.id).delete();
+          }
+        });
+      });
+
+      drawnItems.addLayer(layer);
+    });
+  }
+  loadFady();
+</script>
+
+</body>
+</html>
+
