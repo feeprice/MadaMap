@@ -118,18 +118,24 @@ auth.signOut();
 
 }
 
-auth.onAuthStateChanged(user=>{
+auth.onAuthStateChanged(user => {
+  const loginBox = document.getElementById("loginBox");
+  const userStatus = document.getElementById("userStatus");
 
-if(user){
+  if (user) {
+    // User is logged in
+    userStatus.innerText = "Logged in: " + user.email;
 
-document.getElementById("userStatus").innerText="Logged in: "+user.email;
+    // Hide the login box
+    loginBox.style.display = "none";
 
-}else{
+  } else {
+    // User is logged out
+    userStatus.innerText = "Not logged in";
 
-document.getElementById("userStatus").innerText="Not logged in";
-
-}
-
+    // Show the login box again
+    loginBox.style.display = "block";
+  }
 });
 
 
@@ -137,7 +143,18 @@ document.getElementById("userStatus").innerText="Not logged in";
 // MAP SETUP
 // =======================
 
-const map=L.map("map").setView([-18.7669,46.8691],6);
+const madagascarBounds = [
+  [-25.6, 43.2],  
+  [-11.5, 50.5]   
+];
+
+// Initialize map with bounds
+const map = L.map("map", {
+  minZoom: 5,            
+  maxZoom: 12,          
+  maxBounds: madagascarBounds,       
+  maxBoundsViscosity: 1.0            
+}).setView([-18.7669, 46.8691], 6);
 
 L.tileLayer(
 "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
