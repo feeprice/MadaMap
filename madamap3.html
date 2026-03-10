@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8"/>
+<meta charset="utf-8">
 <title>Madagascar Fady Map</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -9,99 +9,149 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
 
 <style>
-html,body{
+body,html{
 margin:0;
 padding:0;
-width:100%;
 height:100%;
 font-family:Arial;
 }
 
 #map{
-width:100%;
-height:100vh;
+height:100%;
 }
 
-#searchBox{
+#loginBox{
 position:absolute;
 top:10px;
-left:50%;
-transform:translateX(-50%);
+left:10px;
 z-index:1000;
 background:white;
-padding:8px 12px;
+padding:10px;
 border-radius:6px;
-box-shadow:0 2px 6px rgba(0,0,0,0.3);
+box-shadow:0 0 6px rgba(0,0,0,0.3);
 }
 
-#searchInput{
-padding:5px;
-width:200px;
+input{
+margin:3px;
+padding:4px;
 }
 </style>
 </head>
 
 <body>
 
-<div id="searchBox">
-<input id="searchInput" placeholder="Search Madagascar location">
-<button id="searchBtn">Go</button>
+<div id="loginBox">
+
+<input id="email" placeholder="email"><br>
+<input id="password" type="password" placeholder="password"><br>
+
+<button onclick="signup()">Sign Up</button>
+<button onclick="login()">Login</button>
+<button onclick="logout()">Logout</button>
+
+<div id="userStatus"></div>
+
 </div>
 
 <div id="map"></div>
+
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 
 <script>
 
-// =========================
-// FIREBASE
-// =========================
+// =======================
+// FIREBASE CONFIG
+// =======================
 
 const firebaseConfig = {
-apiKey: "AIzaSyAzazHrR1MZycLSVFaf3SJWbioZRaqhm7U",
-authDomain: "mada-map-cc473.firebaseapp.com",
-projectId: "mada-map-cc473",
-storageBucket: "mada-map-cc473.firebasestorage.app",
-messagingSenderId: "575563718533",
-appId: "1:575563718533:web:3df319306689f753102eec"
+
+apiKey: "YOUR_KEY",
+authDomain: "YOUR_PROJECT.firebaseapp.com",
+projectId: "YOUR_PROJECT",
+storageBucket: "YOUR_PROJECT.appspot.com",
+messagingSenderId: "XXXX",
+appId: "XXXX"
+
 };
 
 firebase.initializeApp(firebaseConfig);
+
 const db = firebase.firestore();
+const auth = firebase.auth();
 
 
-// =========================
+// =======================
+// AUTH FUNCTIONS
+// =======================
+
+function signup(){
+
+const email=document.getElementById("email").value;
+const password=document.getElementById("password").value;
+
+auth.createUserWithEmailAndPassword(email,password)
+.catch(err=>alert(err.message));
+
+}
+
+function login(){
+
+const email=document.getElementById("email").value;
+const password=document.getElementById("password").value;
+
+auth.signInWithEmailAndPassword(email,password)
+.catch(err=>alert(err.message));
+
+}
+
+function logout(){
+
+auth.signOut();
+
+}
+
+auth.onAuthStateChanged(user=>{
+
+if(user){
+
+document.getElementById("userStatus").innerText="Logged in: "+user.email;
+
+}else{
+
+document.getElementById("userStatus").innerText="Not logged in";
+
+}
+
+});
+
+
+// =======================
 // MAP SETUP
-// =========================
+// =======================
 
-const madagascarBounds = [[-25.6,43.2],[-11.5,50.5]];
-
-const map = L.map("map",{
-maxBounds: madagascarBounds,
-maxBoundsViscosity:1.0,
-minZoom:5,
-maxZoom:12
-}).setView([-18.7669,46.8691],6);
+const map=L.map("map").setView([-18.7669,46.8691],6);
 
 L.tileLayer(
 "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-{ attribution:"© OpenStreetMap contributors"}
+{attribution:"© OpenStreetMap contributors"}
 ).addTo(map);
 
 
-// =========================
-// DRAW LAYER
-// =========================
-
-const drawnItems = new L.FeatureGroup();
+const drawnItems=new L.FeatureGroup();
 map.addLayer(drawnItems);
 
-const drawControl = new L.Control.Draw({
+
+// =======================
+// DRAW CONTROLS
+// =======================
+
+const drawControl=new L.Control.Draw({
 
 draw:{
 polygon:true,
@@ -112,7 +162,7 @@ polyline:false
 },
 
 edit:{
-featureGroup: drawnItems
+featureGroup:drawnItems
 }
 
 });
@@ -120,57 +170,66 @@ featureGroup: drawnItems
 map.addControl(drawControl);
 
 
-// =========================
-// CREATE SHAPE
-// =========================
+// =======================
+// CREATE FADY
+// =======================
 
-map.on(L.Draw.Event.CREATED, async function(e){
+map.on(L.Draw.Event.CREATED,async function(e){
 
-const layer = e.layer;
+if(!auth.currentUser){
 
-const description = prompt("Enter Fady description:");
-
-if(!description) return;
-
-layer.bindPopup("<b>Fady:</b> "+description);
-
-drawnItems.addLayer(layer);
-
-const geojson = JSON.stringify(layer.toGeoJSON());
-
-try{
-
-const docRef = await db.collection("fady").add({
-
-geojson: geojson,
-fady: description
-
-});
-
-layer.firestoreId = docRef.id;
-
-console.log("Saved:",docRef.id);
-
-}catch(err){
-
-console.error("Save error:",err);
+alert("Please login first");
+return;
 
 }
 
+const layer=e.layer;
+
+const description=prompt("Enter Fady description");
+
+if(!description)return;
+
+drawnItems.addLayer(layer);
+
+layer.bindPopup("<b>Fady:</b> "+description);
+
+const geojson=JSON.stringify(layer.toGeoJSON());
+
+const uid=auth.currentUser.uid;
+
+const docRef=await db.collection("fady").add({
+
+geojson:geojson,
+fady:description,
+creator:uid
+
+});
+
+layer.firestoreId=docRef.id;
+layer.creatorUid=uid;
+
 });
 
 
-// =========================
-// DELETE SHAPE
-// =========================
+// =======================
+// DELETE TOOL
+// =======================
 
-map.on(L.Draw.Event.DELETED, async function(e){
+map.on(L.Draw.Event.DELETED,async function(e){
 
-const layers = e.layers;
+const layers=e.layers;
 
 layers.eachLayer(async function(layer){
 
-if(layer.firestoreId){
+if(!auth.currentUser){
+
+alert("Login required");
+drawnItems.addLayer(layer);
+return;
+
+}
+
+if(layer.creatorUid===auth.currentUser.uid){
 
 await db.collection("fady")
 .doc(layer.firestoreId)
@@ -178,6 +237,12 @@ await db.collection("fady")
 
 console.log("Deleted:",layer.firestoreId);
 
+}else{
+
+alert("You can only delete Fady you created");
+
+drawnItems.addLayer(layer);
+
 }
 
 });
@@ -185,27 +250,28 @@ console.log("Deleted:",layer.firestoreId);
 });
 
 
-// =========================
-// LOAD FROM FIRESTORE
-// =========================
+// =======================
+// LOAD FADY FROM DATABASE
+// =======================
 
 async function loadFady(){
 
-const snapshot = await db.collection("fady").get();
+const snapshot=await db.collection("fady").get();
 
 snapshot.forEach(doc=>{
 
-const data = doc.data();
+const data=doc.data();
 
-const geojson = JSON.parse(data.geojson);
+const geojson=JSON.parse(data.geojson);
 
-const geoLayer = L.geoJSON(geojson);
+const geoLayer=L.geoJSON(geojson);
 
-geoLayer.eachLayer(function(layer){
+geoLayer.eachLayer(layer=>{
 
 layer.bindPopup("<b>Fady:</b> "+data.fady);
 
-layer.firestoreId = doc.id;
+layer.firestoreId=doc.id;
+layer.creatorUid=data.creator;
 
 drawnItems.addLayer(layer);
 
@@ -216,40 +282,6 @@ drawnItems.addLayer(layer);
 }
 
 loadFady();
-
-
-// =========================
-// SEARCH TOOL
-// =========================
-
-document.getElementById("searchBtn").onclick = async function(){
-
-const query =
-document.getElementById("searchInput").value
-+ " Madagascar";
-
-const url =
-"https://nominatim.openstreetmap.org/search?format=json&q="
-+ encodeURIComponent(query);
-
-const res = await fetch(url);
-
-const data = await res.json();
-
-if(data.length>0){
-
-map.setView(
-[parseFloat(data[0].lat),parseFloat(data[0].lon)],
-10
-);
-
-}else{
-
-alert("Location not found");
-
-}
-
-};
 
 </script>
 
