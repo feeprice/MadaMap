@@ -7,8 +7,10 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
 
 <style>
+
 body,html{
 margin:0;
 padding:0;
@@ -37,6 +39,7 @@ input{
 margin:3px;
 padding:4px;
 }
+
 </style>
 </head>
 
@@ -60,6 +63,7 @@ padding:4px;
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -113,29 +117,26 @@ auth.signInWithEmailAndPassword(email,password)
 }
 
 function logout(){
-
 auth.signOut();
-
 }
 
 auth.onAuthStateChanged(user => {
-  const loginBox = document.getElementById("loginBox");
-  const userStatus = document.getElementById("userStatus");
 
-  if (user) {
-    // User is logged in
-    userStatus.innerText = "Logged in: " + user.email;
+const loginBox=document.getElementById("loginBox");
+const userStatus=document.getElementById("userStatus");
 
-    // Hide the login box
-    loginBox.style.display = "none";
+if(user){
 
-  } else {
-    // User is logged out
-    userStatus.innerText = "Not logged in";
+userStatus.innerText="Logged in: "+user.email;
+loginBox.style.display="none";
 
-    // Show the login box again
-    loginBox.style.display = "block";
-  }
+}else{
+
+userStatus.innerText="Not logged in";
+loginBox.style.display="block";
+
+}
+
 });
 
 
@@ -144,23 +145,51 @@ auth.onAuthStateChanged(user => {
 // =======================
 
 const madagascarBounds = [
-  [-25.6, 43.2],  
-  [-11.5, 50.5]   
+[-25.6, 43.2],
+[-11.5, 50.5]
 ];
 
-// Initialize map with bounds
-const map = L.map("map", {
-  minZoom: 5,            
-  maxZoom: 12,          
-  maxBounds: madagascarBounds,       
-  maxBoundsViscosity: 1.0            
-}).setView([-18.7669, 46.8691], 6);
+const map = L.map("map",{
+minZoom:5,
+maxZoom:12,
+maxBounds:madagascarBounds,
+maxBoundsViscosity:1.0
+}).setView([-18.7669,46.8691],6);
+
 
 L.tileLayer(
 "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 {attribution:"© OpenStreetMap contributors"}
 ).addTo(map);
 
+
+// =======================
+// LOCATION SEARCH BAR
+// =======================
+
+L.Control.geocoder({
+defaultMarkGeocode:true
+})
+.on('markgeocode', function(e){
+
+const bbox = e.geocode.bbox;
+
+const poly = L.polygon([
+bbox.getSouthEast(),
+bbox.getNorthEast(),
+bbox.getNorthWest(),
+bbox.getSouthWest()
+]);
+
+map.fitBounds(poly.getBounds());
+
+})
+.addTo(map);
+
+
+// =======================
+// DRAW LAYERS
+// =======================
 
 const drawnItems=new L.FeatureGroup();
 map.addLayer(drawnItems);
@@ -193,11 +222,11 @@ map.addControl(drawControl);
 // CREATE FADY
 // =======================
 
-map.on(L.Draw.Event.CREATED,async function(e){
+map.on(L.Draw.Event.CREATED, async function(e){
 
 if(!auth.currentUser){
 
-showMessage("Please login first");
+alert("Please login first");
 return;
 
 }
@@ -206,7 +235,7 @@ const layer=e.layer;
 
 const description=prompt("Enter Fady description");
 
-if(!description)return;
+if(!description) return;
 
 drawnItems.addLayer(layer);
 
@@ -234,7 +263,7 @@ layer.creatorUid=uid;
 // DELETE TOOL
 // =======================
 
-map.on(L.Draw.Event.DELETED,async function(e){
+map.on(L.Draw.Event.DELETED, async function(e){
 
 const layers=e.layers;
 
@@ -242,7 +271,7 @@ layers.eachLayer(async function(layer){
 
 if(!auth.currentUser){
 
-showMessage("Login required");
+alert("Login required");
 drawnItems.addLayer(layer);
 return;
 
@@ -254,12 +283,9 @@ await db.collection("fady")
 .doc(layer.firestoreId)
 .delete();
 
-console.log("Deleted:",layer.firestoreId);
-
 }else{
 
-showMessage("You can only delete Fady you created");
-
+alert("You can only delete Fady you created");
 drawnItems.addLayer(layer);
 
 }
@@ -280,7 +306,6 @@ const snapshot=await db.collection("fady").get();
 snapshot.forEach(doc=>{
 
 const data=doc.data();
-
 const geojson=JSON.parse(data.geojson);
 
 const geoLayer=L.geoJSON(geojson);
